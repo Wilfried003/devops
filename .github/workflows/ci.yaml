@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     
     permissions:
-      contents: write # Autorise le robot à modifier deployment.yaml
+      contents: write # Autorise le robot à modifier deploy.yaml
 
     steps:
       - name: Checkout code
@@ -58,14 +58,14 @@ jobs:
           echo "Mise à jour du fichier avec l'image : $NEW_IMAGE"
           
           # Sed robuste qui cherche 'image:' et gère les espaces
-          sed -i "s|^[[:space:]]*image:.*|        image: $NEW_IMAGE|g" k8s/deployment.yaml
+          sed -i "s|^[[:space:]]*image:.*|        image: $NEW_IMAGE|g" cicd/deploy.yaml
 
       - name: Commit and Push changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          git add k8s/deployment.yaml
+          git add cicd/deploy.yaml
           # [skip ci] est VITAL pour ne pas boucler à l'infini
           git commit -m "chore: deploy version ${{ env.VERSION }} [skip ci]"
           git push
