@@ -16,4 +16,4 @@ spec:
     spec:
       containers:
       - name: todo-app
-        image: wilfried003/todo-app:VERSION_TAG
+        image: wilfried003/todo-app:0.0.4
