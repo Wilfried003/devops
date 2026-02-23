@@ -1,4 +1,3 @@
-# Ce workflow GitHub Actions construit une image Docker et la pousse sur Docker Hub
 name: Build and Push Docker Image
 
 on:
@@ -9,15 +8,19 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write # Autorise le robot à modifier deployment.yaml
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4 # Version à jour
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -25,12 +28,44 @@ jobs:
       - name: Extract version from package.json
         id: get_version
         run: |
-          echo "VERSION=$(jq -r .version package.json)" >> $GITHUB_ENV
+          # Extraction sécurisée de la version
+          VER=$(jq -r .version package.json)
+          if [ "$VER" = "null" ] || [ -z "$VER" ]; then
+            echo "ERREUR: Impossible de lire la version dans package.json"
+            exit 1
+          fi
+          echo "VERSION=$VER" >> $GITHUB_ENV
+          # On récupère aussi le SHA court pour une fiabilité totale
+          echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: Dockerfile
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/todo-app:${{ env.VERSION }}
+          # On tague avec la version DU package ET le SHA du commit
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/todo-app:${{ env.VERSION }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/todo-app:${{ env.SHORT_SHA }}
+
+      # --- LA PASSATION VERS ARGOCD ---
+
+      - name: Update Kubernetes YAML
+        run: |
+          # On utilise le tag VERSION pour le YAML
+          NEW_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/todo-app:${{ env.VERSION }}"
+          
+          echo "Mise à jour du fichier avec l'image : $NEW_IMAGE"
+          
+          # Sed robuste qui cherche 'image:' et gère les espaces
+          sed -i "s|^[[:space:]]*image:.*|        image: $NEW_IMAGE|g" k8s/deployment.yaml
+
+      - name: Commit and Push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add k8s/deployment.yaml
+          # [skip ci] est VITAL pour ne pas boucler à l'infini
+          git commit -m "chore: deploy version ${{ env.VERSION }} [skip ci]"
+          git push
